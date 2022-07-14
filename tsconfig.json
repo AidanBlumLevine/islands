@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "target": "es6",
+        "lib": [
+            "WebWorker",
+            "DOM",
+            "dom.iterable"
+        ],
+        "module": "esnext",
+        "outDir": "dist",
+        "rootDir": "src",
+        "esModuleInterop": true,
+        "moduleResolution": "node"
+    },
+    "include": [
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        ".vscode"
+    ]
+}

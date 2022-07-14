@@ -1,0 +1,379 @@
+<html>
+
+<head>
+    <title>Rectangles</title>
+    <style>
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        body {
+            font-family: "Lucida Console", Monaco, monospace;
+            margin: 0;
+            display: flex;
+            flex-direction: row;
+            background-color: #F8F5EC;
+        }
+
+        .column {
+            display: flex;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            position: absolute;
+            white-space: nowrap;
+            right: 0;
+            top: 0;
+            bottom: 0;
+        }
+
+        .box {
+            display: flex;
+            flex-grow: 1;
+            border: 1.5px solid black;
+            margin: .5rem;
+            background-color: #f6d55ccf;
+            /*#F6D55C;*/
+            flex-direction: column;
+            position: relative;
+            max-width: 350px;
+            transition: all .2s;
+            max-height: calc(100% - 1rem);
+        }
+
+        .box.closed {
+            max-width: 10px;
+            overflow: hidden;
+        }
+
+        .box>* {
+            opacity: 1;
+            transition: all .2s ease-out;
+        }
+
+        .box.closed>* {
+            opacity: 0;
+        }
+
+        .subtitle {
+            margin-top: .25rem;
+            display: flex;
+            padding: .5rem;
+            margin-left: .5rem;
+        }
+
+        .title {
+            margin-top: .25rem;
+            display: flex;
+            align-self: center;
+            padding: .5rem;
+            font-size: larger;
+        }
+
+        .title::before {
+            content: "\2014";
+        }
+
+        .title::after {
+            content: "\2014";
+        }
+
+        .rangewrapper {
+            margin-left: 1rem;
+            margin-right: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .button {
+            cursor: pointer;
+            display: flex;
+            background-color: #F8F5EC;
+            border: 1.5px solid black;
+            align-self: center;
+            padding: .25rem;
+            margin-bottom: 1rem;
+        }
+
+        .button:hover {
+            color: white;
+            box-shadow: inset 6.5em 0 0 0 #000;
+        }
+
+        .checkbox {
+            cursor: pointer;
+            margin: .5rem;
+            display: inline-block;
+            width: 1.5rem;
+            height: 1.5rem;
+            background-color: #F8F5EC;
+            border: 1.5px solid black;
+        }
+
+        .checkbox:hover {
+            background-color: rgb(238, 234, 234);
+        }
+
+        .checkbox::before {
+            display: none;
+        }
+
+        .checkbox.checked::before {
+            content: "";
+            display: block;
+            background-color: black;
+            width: 1rem;
+            height: 1rem;
+            margin: .25rem;
+        }
+
+        .checkboxwrapper {
+            display: flex;
+            flex-direction: row;
+        }
+
+        .checkboxlabel {
+            align-self: center;
+            margin-left: 1rem;
+            margin-right: 1rem;
+        }
+
+        .textinput {
+            font-family: inherit;
+            background-color: #F8F5EC;
+            border: 2px solid black;
+            font-size: 1rem;
+            padding: 7px 7px;
+            margin: 1rem;
+            outline: none;
+        }
+
+        .textinput:focus {
+            color: white;
+            box-shadow: inset 26.5em 0 0 0 #000;
+        }
+
+        .textinput:focus::placeholder {
+            color: rgb(204, 204, 204);
+            opacity: 1;
+        }
+
+        .bottom {
+            margin-top: auto;
+        }
+
+        .setting-group {
+            display: flex;
+            font-size: 80%;
+        }
+
+        #images {
+            display: flex;
+            overflow-x: auto;
+            margin: auto 1rem 1rem 1rem;
+            max-width: 298px;
+        }
+
+        #images canvas {
+            margin: 2px 1px 2px 1px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        #toggle {
+            position: absolute;
+            left: 0;
+            width: 7px;
+            top: 0;
+            bottom: 0;
+            z-index: 1;
+            cursor: pointer;
+        }
+    </style>
+    <link rel="stylesheet" href="slider.css">
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+
+        #include <fog_pars_vertex>
+  
+        varying vec2 vUv;
+        varying vec3 vPosition;
+  
+        void main() {
+  
+            vUv = uv;
+            #include <begin_vertex>
+            #include <project_vertex>
+            #include <fog_vertex>
+            vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+
+        }
+      </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+
+        #include <common>
+        #include <packing>
+        #include <fog_pars_fragment>
+  
+        varying vec2 vUv;
+        varying vec3 vPosition;
+        uniform sampler2D tDepth;
+        uniform float size;
+        uniform float water_height;
+        uniform sampler2D tHeight;
+        uniform sampler2D tDudv;
+        uniform vec3 waterColor;
+        uniform vec3 foamColor;
+        uniform float cameraNear;
+        uniform float cameraFar;
+        uniform float time;
+        uniform float threshold;
+        uniform vec2 resolution;
+  
+        float getDepth( const in vec2 screenPosition ) {
+            #if DEPTH_PACKING == 1
+                return unpackRGBAToDepth( texture2D( tDepth, screenPosition ) );
+            #else
+                return texture2D( tDepth, screenPosition ).x;
+            #endif
+        }
+  
+        float getViewZ( const in float depth ) {
+            #if ORTHOGRAPHIC_CAMERA == 1
+                return orthographicDepthToViewZ( depth, cameraNear, cameraFar );
+            #else
+                return perspectiveDepthToViewZ( depth, cameraNear, cameraFar );
+            #endif
+        }
+  
+        void main() {
+            //vec2 screenUV = gl_FragCoord.xy / resolution;
+  
+            //float fragmentLinearEyeDepth = getViewZ( gl_FragCoord.z );
+            //float linearEyeDepth = getViewZ( getDepth( screenUV ) );
+  
+            //float diff = saturate( fragmentLinearEyeDepth - linearEyeDepth );
+  
+            //vec2 displacement = texture2D( tDudv, ( vUv * 2.0 ) - time * 0.05 ).rg;
+            //displacement = ( ( displacement * 2.0 ) - 1.0 ) * 1.0;
+            //diff += displacement.x;
+            vec2 sLoc = (vPosition.xy / size) - vec2(.5, .5);
+            float height = texture2D(tHeight, -sLoc).x;
+            float hdiff = height - water_height;
+
+            float foam = step(-.1, hdiff);
+            vec2 fixPos = (vPosition.xy / size);
+
+            // dont allow foam outside box (idk why this is necessary)
+            foam *= step(fixPos.x, .6) * step(-.6, fixPos.x) * step(fixPos.y, .6) * step( -.6, fixPos.y);
+
+            gl_FragColor.rgb = mix(waterColor, foamColor, foam);
+            gl_FragColor.a = mix(.7, 1.0, foam);
+
+            #include <tonemapping_fragment>
+            #include <encodings_fragment>
+            #include <fog_fragment>
+        }
+      </script>
+</head>
+
+<body>
+    <div class="column" id="renderer-target">
+    </div>
+    <div class="column sidebar">
+        <div class="box">
+            <div id="toggle" onclick="document.getElementsByClassName('box')[0].classList.toggle('closed')"></div>
+            <div class="title"> settings </div>
+            <!-- <div class="checkboxwrapper">
+                <div class="checkbox checked" id="enablegrouping"></div>
+                <div class="checkboxlabel">
+                    enable grouping
+                </div>
+            </div>
+            <div class="checkboxwrapper">
+                <div class="checkbox checked" id="enablesidelines"></div>
+                <div class="checkboxlabel">
+                    enable sidelines
+                </div>
+            </div>
+            <div class="checkboxwrapper">
+                <div class="checkbox checked" id="enablemulti"></div>
+                <div class="checkboxlabel">
+                    enable multi cuts
+                </div>
+            
+            </div> -->
+            <div class="subtitle">Size</div>
+            <div class="rangewrapper">
+                <input type="range" min="3" max="500" value="32" class="parameter-control" key="size"></input>
+            </div>
+            <div class="subtitle">Layers</div>
+            <div class="rangewrapper">
+                <input type="range" min="2" max="100" value="30" class="parameter-control" key="layer_count"></input>
+            </div>
+            <div class="setting-group">
+                <div class="setting">
+                    <div class="subtitle">Angle scale</div>
+                    <div class="rangewrapper">
+                        <input type="range" min="1" max="400" value="32" class="parameter-control"
+                            key="angle.scale"></input>
+                    </div>
+                </div>
+                <div class="setting">
+                    <div class="subtitle">Angle octaves</div>
+                    <div class="rangewrapper">
+                        <input type="range" min="1" max="10" value="3" class="parameter-control"
+                            key="angle.octaves"></input>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting">
+                    <div class="subtitle">Roughness scale</div>
+                    <div class="rangewrapper">
+                        <input type="range" min="1" max="400" value="32" class="parameter-control"
+                            key="roughness.scale"></input>
+                    </div>
+                </div>
+                <div class="setting">
+                    <div class="subtitle">Roughness octaves</div>
+                    <div class="rangewrapper">
+                        <input type="range" min="1" max="10" value="3" class="parameter-control"
+                            key="roughness.octaves"></input>
+                    </div>
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <div class="setting">
+                    <div class="subtitle">Base scale</div>
+                    <div class="rangewrapper">
+                        <input type="range" min="1" max="400" value="32" class="parameter-control"
+                            key="base.scale"></input>
+                    </div>
+                </div>
+                <div class="setting">
+                    <div class="subtitle">Base octaves</div>
+                    <div class="rangewrapper">
+                        <input type="range" min="1" max="10" value="3" class="parameter-control"
+                            key="base.octaves"></input>
+                    </div>
+                </div>
+            </div>
+
+            <input type="text" class="textinput" id="seed" placeholder="seed"></input>
+            <div class="button" id="generate">generate</div>
+            <div class="button" id="download">download</div>
+
+            <div id="images"></div>
+        </div>
+    </div>
+
+</body>
+<script src="/pack.js"></script>
+
+</html>
