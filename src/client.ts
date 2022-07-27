@@ -95,7 +95,7 @@ class Client {
         // ====================================================================
 
         this.light = new DirectionalLight(0xf4f1d5, 1.5)
-        this.light.position.set(50, 50, 50)
+        this.light.position.set(100, 100, 100)
         this.light.castShadow = true
         this.light.shadow.mapSize.width = Math.min(2 ** 12, this.renderer.capabilities.maxTextureSize)
         this.light.shadow.mapSize.height = Math.min(2 ** 12, this.renderer.capabilities.maxTextureSize)
@@ -118,6 +118,18 @@ class Client {
                     target_var = target_var[keys[i]]
                 target_var[keys[keys.length - 1]] = parseFloat((<HTMLInputElement>e.target).value)
             })
+
+        const floor = new CircleBufferGeometry(500, 32)
+        const basecolor = this.color_gradient.data.slice(0, 3)
+        const material = new MeshStandardMaterial({
+            color: new Color("rgb(" + basecolor[0] + "," + basecolor[1] + "," + basecolor[2] + ")").convertSRGBToLinear(),
+            roughness: .9,
+            metalness: .4,
+        })
+        let mesh = new Mesh(floor, material)
+        mesh.receiveShadow = true
+        this.scene.add(mesh)
+
         this.generate()
     }
 
@@ -182,7 +194,7 @@ class Client {
                 for (let p of evt.data.pixels) {
                     ctx.fillStyle = p.color
                     ctx.fillRect(p.x, p.y, 1, 1)
-                    bwctx.fillStyle = 'rgb('+p.raw+','+p.raw+','+p.raw+')'
+                    bwctx.fillStyle = 'rgb(' + p.raw + ',' + p.raw + ',' + p.raw + ')'
                     bwctx.fillRect(p.x, p.y, 1, 1)
                 }
                 this.height_tex.needsUpdate = true
@@ -199,11 +211,13 @@ class Client {
         this.light.shadow.camera.right = 0
         this.light.shadow.camera.bottom = 0
         this.light.shadow.camera.top = 0
+        this.light.shadow.camera.near = 999999
+        this.light.shadow.camera.far = 0
 
         // setTimeout(() => {
         //     const cameraHelper = new CameraHelper(inst.light.shadow.camera)
         //     inst.scene.add(cameraHelper)
-        // }, 100)
+        // }, 1000)
     }
 
     debug_line(points, color) {
@@ -231,7 +245,6 @@ class Client {
             roughness: .9,
             metalness: .4,
             // side: DoubleSide
-            // wireframe :true
         })
 
         let mesh = new Mesh(geometry, material)
@@ -248,14 +261,14 @@ class Client {
                 let curve_v = 1 / (1 + (a * x - a / 2) ** 2) + x - 1 / (1 + (a / 2) ** 2)
                 let scale_v = 1
                 mesh.scale.set(scale_v, scale_v, scale_v * curve_v)
+                this.set_camera(mesh)
             }, t)
         }
         let scale_v = 1
         mesh.scale.set(scale_v, scale_v, scale_v)
-        mesh.position.set(0, 0, 0)
+        mesh.position.set(0, 0, -1 / this.parameters.layer_count * this.parameters.vscale)
         mesh.translateX((-this.parameters.size - 2) / 2 * this.parameters.scale * scale_v)
         mesh.translateY((-this.parameters.size - 2) / 2 * this.parameters.scale * scale_v)
-        this.set_camera(mesh)
         mesh.scale.set(scale_v, scale_v, 0.01)
 
     }
@@ -265,7 +278,7 @@ class Client {
         // Camera controls ===================================================
         let camera_distance = 164, camera_x_rot = Math.PI / 4, camera_y_rot = Math.PI / 4, camera_center = new Vector3(0, 0, 0), last_release_right = 0
         function update_camera_pos() {
-            camera_y_rot = Math.max(.0001, Math.min(Math.PI / 2 - .0001, camera_y_rot))
+            camera_y_rot = Math.max(.0001, Math.min(Math.PI / 2 - .1, camera_y_rot))
             camera_distance = Math.max(10, camera_distance)
             inst.camera.position.copy(camera_center)
             inst.camera.position.add(new Vector3(0, 0, camera_distance).applyAxisAngle(new Vector3(1, 0, 0), camera_y_rot).applyAxisAngle(new Vector3(0, 0, 1), camera_x_rot))
@@ -339,14 +352,18 @@ class Client {
             new Vector3(box.min.x, box.max.y, box.max.z),
             new Vector3(box.max.x, box.max.y, box.max.z)
         ]
+        let camdist = 173;
         let flat_quat = new Quaternion().setFromUnitVectors(new Vector3().copy(this.light.position).normalize(), new Vector3(0, 0, 1))
         let light_rot = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), -.25)
         for (let corner of corners) {
             let flat_corner = corner.applyQuaternion(flat_quat).applyQuaternion(light_rot)
-            this.light.shadow.camera.right = Math.max(flat_corner.x + 8, this.light.shadow.camera.right)
-            this.light.shadow.camera.top = Math.max(flat_corner.y + 8, this.light.shadow.camera.top)
-            this.light.shadow.camera.left = Math.min(flat_corner.x - 8, this.light.shadow.camera.left)
-            this.light.shadow.camera.bottom = Math.min(flat_corner.y - 8, this.light.shadow.camera.bottom)
+            this.light.shadow.camera.right = Math.max(flat_corner.x + 2, this.light.shadow.camera.right)
+            this.light.shadow.camera.top = Math.max(flat_corner.y + 2, this.light.shadow.camera.top)
+            this.light.shadow.camera.left = Math.min(flat_corner.x - 2, this.light.shadow.camera.left)
+            this.light.shadow.camera.bottom = Math.min(flat_corner.y - 2, this.light.shadow.camera.bottom)
+
+            this.light.shadow.camera.near = Math.min(flat_corner.z - 2 + camdist, this.light.shadow.camera.near)
+            this.light.shadow.camera.far = Math.max(flat_corner.z + 2 + camdist, this.light.shadow.camera.far)
         }
 
 
@@ -354,7 +371,7 @@ class Client {
         this.renderer.shadowMap.needsUpdate = true
     }
 
-    make_water(water_level){
+    make_water(water_level) {
         const geometry = new CircleBufferGeometry(500, 32)
         var uniforms = {
             time: {
@@ -420,7 +437,7 @@ class Client {
         this.waterMaterial.uniforms.tHeight.value = this.height_tex
 
         this.water = new Mesh(geometry, this.waterMaterial)
-        this.water.position.set(0, 0, water_level)
+        this.water.position.set(0, 0, water_level - 1 / this.parameters.layer_count * this.parameters.vscale)
         this.scene.add(this.water)
     }
 
