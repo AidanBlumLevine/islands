@@ -40,7 +40,7 @@ class Client {
     constructor() {
         let inst = this
         let image = document.createElement("img")
-        image.src = "gradient_longer.png"
+        image.src = "dist/gradient_longer.png"
         image.onload = (e) => {
             let canvas = document.createElement('canvas')
             canvas.width = image.naturalWidth
